@@ -32,7 +32,7 @@ export class BigFanOutStack extends cdk.Stack {
     })
 
     const manifestBucket = dataBucket
-    const manifestPrefix = 'mainfests/'
+    const manifestPrefix = 'manifests/'
 
     const generateS3ListLambda = new lambda.NodejsFunction(this, 'generate-s3-list', {
       entry: 'lib/lambdas/generate-s3-list.js'
@@ -72,6 +72,10 @@ export class BigFanOutStack extends cdk.Stack {
     startS3BatchJobLambda.addToRolePolicy(new iam.PolicyStatement({
       resources: ['*'],
       actions: ['s3:CreateJob']
+    }))
+    startS3BatchJobLambda.addToRolePolicy(new iam.PolicyStatement({
+      resources: [s3BatchRole.roleArn],
+      actions: ['iam:PassRole']
     }))
     
 
