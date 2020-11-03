@@ -3,6 +3,7 @@ import * as s3 from '@aws-cdk/aws-s3'
 import * as lambda from '@aws-cdk/aws-lambda-nodejs'
 import * as sfn from '@aws-cdk/aws-stepfunctions'
 import * as tasks from '@aws-cdk/aws-stepfunctions-tasks'
+import * as iam from '@aws-cdk/aws-iam'
 
 export class BigFanOutStack extends cdk.Stack {
 
@@ -12,6 +13,10 @@ export class BigFanOutStack extends cdk.Stack {
     super(scope, id, props);
 
     const inventoryBucket = new s3.Bucket(this, 'InventoryBucket');
+
+    const s3BatchReportPrefix = 's3-batch-reports'
+
+    
 
     const dataBucket = new s3.Bucket(this, 'DataBucket', {
       inventories: [
@@ -26,11 +31,14 @@ export class BigFanOutStack extends cdk.Stack {
       ]
     })
 
+    const manifestBucket = dataBucket
+    const manifestPrefix = 'mainfests/'
+
     const generateS3ListLambda = new lambda.NodejsFunction(this, 'generate-s3-list', {
       entry: 'lib/lambdas/generate-s3-list.js'
     }).addEnvironment('BUCKET_NAME', dataBucket.bucketName)
     
-    dataBucket.grantPut(generateS3ListLambda, 'manifests/*')
+    manifestBucket.grantPut(generateS3ListLambda, `${manifestPrefix}*`)
 
     const generateS3ListStep = new tasks.LambdaInvoke(this, 'Generate S3 List', {
       lambdaFunction: generateS3ListLambda,
@@ -38,9 +46,34 @@ export class BigFanOutStack extends cdk.Stack {
       resultPath: '$.manifestLocation'
     })
 
+    const processFileLambda = new lambda.NodejsFunction(this, 'process-file', {
+      entry: 'lib/lambdas/process-file.js'
+    })
+
+    const s3BatchRole = new iam.Role(this, 'S3BatchRole', {
+      assumedBy: new iam.ServicePrincipal('batchoperations.s3.amazonaws.com'),
+      description: 'Allow S3 Batch jobs to invoke Lambda',
+    })
+
+    processFileLambda.grantInvoke(s3BatchRole)
+    manifestBucket.grantRead(s3BatchRole, `${manifestPrefix}*`)
+
     const startS3BatchJobLambda = new lambda.NodejsFunction(this, 'start-batch-job', {
       entry: 'lib/lambdas/start-batch-job.js',
+      environment: {
+        ACCOUNT_ID: this.account,
+        JOB_LAMBDA_ARN: processFileLambda.functionArn,
+        REPORT_BUCKET: inventoryBucket.bucketArn,
+        REPORT_PREFIX: s3BatchReportPrefix,
+        JOB_ROLE_ARN: s3BatchRole.roleArn
+      }
     })
+
+    startS3BatchJobLambda.addToRolePolicy(new iam.PolicyStatement({
+      resources: ['*'],
+      actions: ['s3:CreateJob']
+    }))
+    
 
     const startS3BatchStep = new tasks.LambdaInvoke(this, 'Start S3 Batch Job', {
       lambdaFunction: startS3BatchJobLambda,
@@ -51,8 +84,6 @@ export class BigFanOutStack extends cdk.Stack {
         taskToken: sfn.JsonPath.taskToken
       })
     })
-
-    const processFileLambda = null
 
     const handleS3BatchCompletion = null
 
