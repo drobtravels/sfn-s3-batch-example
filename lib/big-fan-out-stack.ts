@@ -14,9 +14,7 @@ export class BigFanOutStack extends cdk.Stack {
 
     const inventoryBucket = new s3.Bucket(this, 'InventoryBucket');
 
-    const s3BatchReportPrefix = 's3-batch-reports'
-
-    
+    const s3BatchReportPrefix = 's3-batch-reports/'
 
     const dataBucket = new s3.Bucket(this, 'DataBucket', {
       inventories: [
@@ -57,6 +55,7 @@ export class BigFanOutStack extends cdk.Stack {
 
     processFileLambda.grantInvoke(s3BatchRole)
     manifestBucket.grantRead(s3BatchRole, `${manifestPrefix}*`)
+    inventoryBucket.grantReadWrite(s3BatchRole, `${s3BatchReportPrefix}*`)
 
     const startS3BatchJobLambda = new lambda.NodejsFunction(this, 'start-batch-job', {
       entry: 'lib/lambdas/start-batch-job.js',
