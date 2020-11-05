@@ -6,6 +6,7 @@ import * as lambda from '@aws-cdk/aws-lambda-nodejs'
 import * as iam from '@aws-cdk/aws-iam'
 import * as sfn from '@aws-cdk/aws-stepfunctions'
 import * as tasks from '@aws-cdk/aws-stepfunctions-tasks'
+import * as ddb from '@aws-cdk/aws-dynamodb'
 
 export interface s3Location {
   bucket: IBucket,
@@ -24,6 +25,7 @@ export class S3BatchSync extends cdk.Construct {
 
   protected props: S3BatchSyncProps
   protected s3BatchRole: iam.IRole
+  protected jobIdTaskTokenTable: ddb.Table
 
   public readonly stepFunctionTask: tasks.LambdaInvoke // The Task to start the Batch Job
 
@@ -32,6 +34,8 @@ export class S3BatchSync extends cdk.Construct {
     this.props = props
 
     this.s3BatchRole = this.generateS3BatchRole()
+
+    this.jobIdTaskTokenTable = this.generateTable()
 
     const startS3BatchJobLambda = this.generateLambdaToStartS3BatchJob()
 
@@ -43,6 +47,16 @@ export class S3BatchSync extends cdk.Construct {
         manifestLocation: props.manifestLocationPath,
         taskToken: sfn.JsonPath.taskToken
       })
+    })
+  }
+
+  generateTable(): ddb.Table {
+    return new ddb.Table(this, 'JobIdTaskTokenTable', {
+      billingMode: ddb.BillingMode.PAY_PER_REQUEST,
+      partitionKey: {
+        name: 'JobId',
+        type: ddb.AttributeType.STRING
+      }
     })
   }
 
@@ -67,7 +81,8 @@ export class S3BatchSync extends cdk.Construct {
         JOB_LAMBDA_ARN: this.props.processLambda.functionArn,
         REPORT_BUCKET: this.props.reportLocation.bucket.bucketArn,
         REPORT_PREFIX: this.props.reportLocation.prefix,
-        JOB_ROLE_ARN: this.s3BatchRole.roleArn
+        JOB_ROLE_ARN: this.s3BatchRole.roleArn,
+        JOB_TABLE_NAME: this.jobIdTaskTokenTable.tableName
       }
     })
 
@@ -82,6 +97,9 @@ export class S3BatchSync extends cdk.Construct {
       resources: [this.s3BatchRole.roleArn],
       actions: ['iam:PassRole']
     }))
+
+    // Lambda functions needs to save the job id / task token
+    this.jobIdTaskTokenTable.grant(startLambda, 'dynamodb:PutItem')
 
     return startLambda
   }
