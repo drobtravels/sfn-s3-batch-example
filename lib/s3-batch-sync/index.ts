@@ -46,7 +46,7 @@ export class S3BatchSync extends cdk.Construct {
     this.stepFunctionTask = new tasks.LambdaInvoke(this, 'Start S3 Batch Job', {
       lambdaFunction: startS3BatchJobLambda,
       integrationPattern: sfn.IntegrationPattern.WAIT_FOR_TASK_TOKEN,
-      timeout: cdk.Duration.minutes(5),
+      timeout: cdk.Duration.days(1),
       payload: sfn.TaskInput.fromObject({
         manifestLocation: props.manifestLocationPath,
         taskToken: sfn.JsonPath.taskToken
@@ -120,9 +120,9 @@ export class S3BatchSync extends cdk.Construct {
     // Lambda function needs permission to callback to Step Functions
     completionLambda.addToRolePolicy(new iam.PolicyStatement({
       actions: [
-        'SendTaskFailure',
-        'SendTaskSuccess '
-      ],
+        'states:SendTaskFailure',
+        'states:SendTaskSuccess'
+      ],  
       resources: ['*']
     }))
 
