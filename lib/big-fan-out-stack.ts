@@ -4,6 +4,7 @@ import * as lambda from '@aws-cdk/aws-lambda-nodejs'
 import * as sfn from '@aws-cdk/aws-stepfunctions'
 import * as tasks from '@aws-cdk/aws-stepfunctions-tasks'
 import * as iam from '@aws-cdk/aws-iam'
+import { S3BatchSync } from './s3-batch-sync'
 
 export class BigFanOutStack extends cdk.Stack {
 
@@ -48,50 +49,24 @@ export class BigFanOutStack extends cdk.Stack {
       entry: 'lib/lambdas/process-file.js'
     })
 
-    const s3BatchRole = new iam.Role(this, 'S3BatchRole', {
-      assumedBy: new iam.ServicePrincipal('batchoperations.s3.amazonaws.com'),
-      description: 'Allow S3 Batch jobs to invoke Lambda',
-    })
-
-    processFileLambda.grantInvoke(s3BatchRole)
-    manifestBucket.grantRead(s3BatchRole, `${manifestPrefix}*`)
-    inventoryBucket.grantReadWrite(s3BatchRole, `${s3BatchReportPrefix}*`)
-
-    const startS3BatchJobLambda = new lambda.NodejsFunction(this, 'start-batch-job', {
-      entry: 'lib/lambdas/start-batch-job.js',
-      environment: {
-        ACCOUNT_ID: this.account,
-        JOB_LAMBDA_ARN: processFileLambda.functionArn,
-        REPORT_BUCKET: inventoryBucket.bucketArn,
-        REPORT_PREFIX: s3BatchReportPrefix,
-        JOB_ROLE_ARN: s3BatchRole.roleArn
-      }
-    })
-
-    startS3BatchJobLambda.addToRolePolicy(new iam.PolicyStatement({
-      resources: ['*'],
-      actions: ['s3:CreateJob']
-    }))
-    startS3BatchJobLambda.addToRolePolicy(new iam.PolicyStatement({
-      resources: [s3BatchRole.roleArn],
-      actions: ['iam:PassRole']
-    }))
-    
-
-    const startS3BatchStep = new tasks.LambdaInvoke(this, 'Start S3 Batch Job', {
-      lambdaFunction: startS3BatchJobLambda,
-      integrationPattern: sfn.IntegrationPattern.WAIT_FOR_TASK_TOKEN,
-      timeout: cdk.Duration.minutes(5),
-      payload: sfn.TaskInput.fromObject({
-        manifestLocation: sfn.JsonPath.stringAt('$.manifestLocation'),
-        taskToken: sfn.JsonPath.taskToken
-      })
+    const s3BatchSync = new S3BatchSync(this, 'ProcessS3Files', {
+      processLambda: processFileLambda,
+      manifestLocation: {
+        bucket: manifestBucket,
+        prefix: manifestPrefix
+      },
+      reportLocation: {
+        bucket: inventoryBucket,
+        prefix: 'reports/'
+      },
+      manifestLocationPath: sfn.JsonPath.stringAt('$.manifestLocation'),
+      accountId: this.account
     })
 
     const handleS3BatchCompletion = null
 
     const stepWorkflow = generateS3ListStep
-      .next(startS3BatchStep)
+      .next(s3BatchSync.stepFunctionTask)
   
     this.stepFunction = new sfn.StateMachine(this, 'Workflow', {
       definition: stepWorkflow,
