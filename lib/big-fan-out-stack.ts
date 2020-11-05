@@ -1,6 +1,7 @@
 import * as cdk from '@aws-cdk/core'
 import * as s3 from '@aws-cdk/aws-s3'
 import * as lambda from '@aws-cdk/aws-lambda-nodejs'
+import { Tracing } from '@aws-cdk/aws-lambda'
 import * as sfn from '@aws-cdk/aws-stepfunctions'
 import * as tasks from '@aws-cdk/aws-stepfunctions-tasks'
 import * as iam from '@aws-cdk/aws-iam'
@@ -34,8 +35,12 @@ export class BigFanOutStack extends cdk.Stack {
     const manifestPrefix = 'manifests'
 
     const generateS3ListLambda = new lambda.NodejsFunction(this, 'generate-s3-list', {
-      entry: 'lib/lambdas/generate-s3-list.js'
-    }).addEnvironment('BUCKET_NAME', dataBucket.bucketName)
+      entry: 'lib/lambdas/generate-s3-list.js',
+      tracing: Tracing.ACTIVE,
+      environment: {
+        BUCKET_NAME: dataBucket.bucketName
+      }
+    })
     
     manifestBucket.grantPut(generateS3ListLambda, `${manifestPrefix}/*`)
 

@@ -1,6 +1,6 @@
 import * as cdk from '@aws-cdk/core'
 import { IBucket } from '@aws-cdk/aws-s3'
-import { Function, IFunction, Code, Runtime } from '@aws-cdk/aws-lambda'
+import { Function, IFunction, Code, Runtime, Tracing } from '@aws-cdk/aws-lambda'
 import * as path from 'path'
 import * as lambda from '@aws-cdk/aws-lambda-nodejs'
 import * as iam from '@aws-cdk/aws-iam'
@@ -87,7 +87,8 @@ export class S3BatchSync extends cdk.Construct {
         REPORT_PREFIX: this.props.reportLocation.prefix,
         JOB_ROLE_ARN: this.s3BatchRole.roleArn,
         JOB_TABLE_NAME: this.jobIdTaskTokenTable.tableName
-      }
+      },
+      tracing: Tracing.ACTIVE
     })
 
     // Lambda funciton needs permission to create an S3 Batch Job
@@ -113,15 +114,18 @@ export class S3BatchSync extends cdk.Construct {
     const completionLambda = new lambda.NodejsFunction(this, 'onS3JobCompletion', {
       entry: 'lib/s3-batch-sync/lambdas/on-job-completion.js',
       environment: {
-        JOB_TABLE_NAME: this.jobIdTaskTokenTable.tableName
-      }
+        JOB_TABLE_NAME: this.jobIdTaskTokenTable.tableName,
+        ACCOUNT_ID: this.props.accountId
+      },
+      tracing: Tracing.ACTIVE
     })
 
-    // Lambda function needs permission to callback to Step Functions
+    // Lambda function needs permission to callback to Step Functions and get details on S3 Batch Job
     completionLambda.addToRolePolicy(new iam.PolicyStatement({
       actions: [
         'states:SendTaskFailure',
-        'states:SendTaskSuccess'
+        'states:SendTaskSuccess',
+        's3:DescribeJob'
       ],  
       resources: ['*']
     }))
