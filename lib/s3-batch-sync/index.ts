@@ -53,8 +53,8 @@ export class S3BatchSync extends cdk.Construct {
     })
 
     this.props.processLambda.grantInvoke(role)
-    this.props.manifestLocation.bucket.grantRead(role, `${this.props.manifestLocation.prefix}*`)
-    this.props.reportLocation.bucket.grantReadWrite(role, `${this.props.reportLocation.prefix}*`)
+    this.props.manifestLocation.bucket.grantRead(role, `${this.props.manifestLocation.prefix}/*`)
+    this.props.reportLocation.bucket.grantReadWrite(role, `${this.props.reportLocation.prefix}/*`)
   
     return role
   }

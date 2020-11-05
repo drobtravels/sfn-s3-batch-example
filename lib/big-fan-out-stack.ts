@@ -31,13 +31,13 @@ export class BigFanOutStack extends cdk.Stack {
     })
 
     const manifestBucket = dataBucket
-    const manifestPrefix = 'manifests/'
+    const manifestPrefix = 'manifests'
 
     const generateS3ListLambda = new lambda.NodejsFunction(this, 'generate-s3-list', {
       entry: 'lib/lambdas/generate-s3-list.js'
     }).addEnvironment('BUCKET_NAME', dataBucket.bucketName)
     
-    manifestBucket.grantPut(generateS3ListLambda, `${manifestPrefix}*`)
+    manifestBucket.grantPut(generateS3ListLambda, `${manifestPrefix}/*`)
 
     const generateS3ListStep = new tasks.LambdaInvoke(this, 'Generate S3 List', {
       lambdaFunction: generateS3ListLambda,
@@ -57,7 +57,7 @@ export class BigFanOutStack extends cdk.Stack {
       },
       reportLocation: {
         bucket: inventoryBucket,
-        prefix: 'reports/'
+        prefix: 'reports'
       },
       manifestLocationPath: sfn.JsonPath.stringAt('$.manifestLocation'),
       accountId: this.account
