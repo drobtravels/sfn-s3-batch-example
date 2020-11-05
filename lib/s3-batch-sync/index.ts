@@ -7,6 +7,8 @@ import * as iam from '@aws-cdk/aws-iam'
 import * as sfn from '@aws-cdk/aws-stepfunctions'
 import * as tasks from '@aws-cdk/aws-stepfunctions-tasks'
 import * as ddb from '@aws-cdk/aws-dynamodb'
+import { Rule, RuleTargetInput } from '@aws-cdk/aws-events'
+import * as eventTargets from '@aws-cdk/aws-events-targets'
 
 export interface s3Location {
   bucket: IBucket,
@@ -38,6 +40,8 @@ export class S3BatchSync extends cdk.Construct {
     this.jobIdTaskTokenTable = this.generateTable()
 
     const startS3BatchJobLambda = this.generateLambdaToStartS3BatchJob()
+
+    this.handleJobCompletion()
 
     this.stepFunctionTask = new tasks.LambdaInvoke(this, 'Start S3 Batch Job', {
       lambdaFunction: startS3BatchJobLambda,
@@ -102,5 +106,52 @@ export class S3BatchSync extends cdk.Construct {
     this.jobIdTaskTokenTable.grant(startLambda, 'dynamodb:PutItem')
 
     return startLambda
+  }
+
+  handleJobCompletion() {
+
+    const completionLambda = new lambda.NodejsFunction(this, 'onS3JobCompletion', {
+      entry: 'lib/s3-batch-sync/lambdas/on-job-completion.js',
+      environment: {
+        JOB_TABLE_NAME: this.jobIdTaskTokenTable.tableName
+      }
+    })
+
+    // Lambda function needs permission to callback to Step Functions
+    completionLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: [
+        'SendTaskFailure',
+        'SendTaskSuccess '
+      ],
+      resources: ['*']
+    }))
+
+    this.jobIdTaskTokenTable.grantReadData(completionLambda)
+
+    const s3JobChangedPattern = {
+      source: ['aws.s3'],
+      'detail-type': ['AWS Service Event via CloudTrail'],
+      detail: {
+        eventSource: ['s3.amazonaws.com'],
+        eventName: ['JobStatusChanged'],
+        serviceEventDetails: {
+          status: [
+            'Complete',
+            'Failed'
+          ]
+        }
+      }
+    }
+
+    const eventBridgeRule = new Rule(this, 'S3BatchJobChange', {
+      description: 'Handle S3 Batch Job Completions and trigger Lambda function',
+      enabled: true,
+      eventPattern: s3JobChangedPattern,
+      targets: [
+        new eventTargets.LambdaFunction(completionLambda, {
+          event: RuleTargetInput.fromEventPath('$.detail.serviceEventDetails')
+        })
+      ]
+    })
   }
 }
