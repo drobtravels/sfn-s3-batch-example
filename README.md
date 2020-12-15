@@ -1,8 +1,6 @@
-# Welcome to your CDK TypeScript project!
+# AWS Step Functions / Amazon S3 Batch Example
 
-This is a blank project for TypeScript development with CDK.
-
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+Sample CDK project which demonstrates how AWS Step Functions could be used to start and wait for an S3 Batch Job.
 
 ## Useful commands
 
